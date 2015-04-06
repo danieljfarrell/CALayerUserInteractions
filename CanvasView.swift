@@ -12,7 +12,7 @@ func highlightShapeLayer(shape : CAShapeLayer) {
     shape.lineWidth = 4.0
 }
 
-func removeHighlightOnShapeLater(shape : CAShapeLayer) {
+func removeHighlightOnShapeLayer(shape : CAShapeLayer) {
     shape.lineWidth = 0.0
 }
 
@@ -23,10 +23,25 @@ func updateLayerPropertyWithoutAnimations( layer: CALayer, process : (layer : CA
     CATransaction.commit()
 }
 
+
 class CanvasView: NSView {
 
-    var layersSelectedByDrag : Set<CALayer> = Set()
-    var layerSelectedByClick : CALayer?
+    var selectedLayers : Set<CALayer> = Set()
+    var layerSelectedOnMouseDown : CALayer?
+    
+    func addLayerToSelectedCache( layer : CALayer) {
+        self.selectedLayers.insert(layer)
+        if let shape = layer as? CAShapeLayer {
+            highlightShapeLayer(shape)
+        }
+    }
+    
+    func removeLayerFromSelectedCache(layer : CALayer) {
+        if let shape = layer as? CAShapeLayer {
+            removeHighlightOnShapeLayer(shape)
+            self.selectedLayers.remove(shape)
+        }
+    }
     
     override func drawRect(dirtyRect: NSRect) {
         super.drawRect(dirtyRect)
@@ -35,13 +50,23 @@ class CanvasView: NSView {
     
     override func mouseDown(theEvent: NSEvent) {
         
+//        // Remove all but not if a modifer key is held
+//        if( (theEvent.modifierFlags & NSEventModifierFlags.ShiftKeyMask).rawValue == 0 ){
+//            for layer in layersSelectedByDrag.union(layersSelectedByClick).subtract(Set([layerSelectedOnMouseDown])) {
+//                if let shape = layer as? CAShapeLayer {
+//                    removeLayerFromSelectionCache(shape)
+//                }
+//            }
+//        }
+//        
+        
         let viewPoint = self.convertPoint(theEvent.locationInWindow, fromView: nil)
         let rootLayerPoint = self.convertPointToLayer(viewPoint)
         if let rootLayer = self.layer {
             let hitLayer = rootLayer.hitTest(rootLayerPoint)
             if hitLayer != rootLayer {
                 
-                layerSelectedByClick = hitLayer
+                layerSelectedOnMouseDown = hitLayer
                 let hitPointInHitLayerFrame = rootLayer.convertPoint(rootLayerPoint, toLayer: hitLayer)
                 let ax = hitPointInHitLayerFrame.x / NSWidth(hitLayer.bounds)
                 let ay = hitPointInHitLayerFrame.y / NSHeight(hitLayer.bounds)
@@ -52,41 +77,80 @@ class CanvasView: NSView {
                 
                 // When setting the anchor point we also need to set the position
                 hitLayer.anchorPoint = CGPoint(x:ax, y:ay)
-                
-                println("Hit Layer Anchor Point:")
-                println(hitLayer.anchorPoint)
-                println("Hit Layer Frame:")
-                println(hitLayer.frame)
-                println("Hit Layer Bounds:")
-                println(hitLayer.bounds)
-                println()
-                
                 let newSuperLayerPosition = rootLayer.convertPoint(rootLayerPoint, toLayer:hitLayer.superlayer)
                 hitLayer.position = newSuperLayerPosition
                 
                 CATransaction.commit()
                 
-                if let shape = hitLayer as? CAShapeLayer {
-                    highlightShapeLayer(shape)
+                let shiftIsPressed = !((theEvent.modifierFlags & NSEventModifierFlags.ShiftKeyMask).rawValue == 0)
+                let cacheContainsHitLayer = selectedLayers.contains(hitLayer)
+                
+                
+                if shiftIsPressed {
+                    // Toggle layer in and out of selected set
+                    if cacheContainsHitLayer {
+                        removeLayerFromSelectedCache(hitLayer)
+                        layerSelectedOnMouseDown = nil
+                    } else {
+                        addLayerToSelectedCache(hitLayer)
+                    }
+                } else {
+                    // If hit layer is not in the selected group reset the selection and select the single hit layer.
+                    // Otherwise do nothing because we will drag the whole group when the mouse is next dragged.
+                    if cacheContainsHitLayer {
+                        //removeLayerFromSelectedCache(hitLayer)
+                        
+                    } else {
+                        
+                        for layer in selectedLayers {
+                            if let shape = layer as? CAShapeLayer {
+                                removeLayerFromSelectedCache(shape)
+                            }
+                        }
+                        addLayerToSelectedCache(hitLayer)
+                    }
                 }
                 
             } else {
-                layerSelectedByClick = nil
+                layerSelectedOnMouseDown = nil
             }
             
-            // De-select all other layer that are not contained in the two caches
-            let allLayers = Set(rootLayer.sublayers as! [CALayer])
-            var cachedLayers = Set(layersSelectedByDrag)
-            if layerSelectedByClick != nil {
-                cachedLayers.insert(layerSelectedByClick!)
-            }
+
             
-            let layersNeedingDeselection = allLayers.subtract(cachedLayers)
-            for layer in layersNeedingDeselection {
-                if let shape = layer as? CAShapeLayer {
-                    removeHighlightOnShapeLater(shape)
-                }
-            }
+
+            
+
+            
+//            if !selectedLayers.contains(hitLayer) && !shiftIsPressed {
+//                
+//                for layer in selectedLayers {
+//                    if let shape = layer as? CAShapeLayer {
+//                        removeLayerFromSelectedCache(shape)
+//                    }
+//                }
+//            }
+            
+            
+            
+            
+            
+//            // De-select all other layer that are not contained in the two caches
+//            let allLayers = Set(rootLayer.sublayers as! [CALayer])
+//            var cachedLayers = Set(layersSelectedByDrag.union(layersSelectedByClick))
+//            if layerSelectedOnMouseDown != nil {
+//                cachedLayers.insert(layerSelectedOnMouseDown!)
+//            }
+//            
+//            let layersNeedingDeselection = allLayers.subtract(cachedLayers)
+//            for layer in layersNeedingDeselection {
+//                if let shape = layer as? CAShapeLayer {
+//                    removeLayerFromSelectionCache(shape)
+//                }
+//            }
+            
+            
+            println()
+            
         }
         
 
@@ -94,22 +158,22 @@ class CanvasView: NSView {
     
     override func mouseDragged(theEvent: NSEvent) {
         
-        if let layerSelectedByClick = layerSelectedByClick, rootLayer = self.layer {
+        if let layerSelectedOnMouseDown = layerSelectedOnMouseDown, rootLayer = self.layer {
             
             
             let viewPoint = self.convertPoint(theEvent.locationInWindow, fromView: nil)
             let rootLayerPoint = self.convertPointToLayer(viewPoint)
-            let newSuperLayerPosition = rootLayer.convertPoint(rootLayerPoint, toLayer:layerSelectedByClick.superlayer)
-            let offset = CGPoint(x: newSuperLayerPosition.x - layerSelectedByClick.position.x,
-                                 y: newSuperLayerPosition.y - layerSelectedByClick.position.y)
+            let newSuperLayerPosition = rootLayer.convertPoint(rootLayerPoint, toLayer:layerSelectedOnMouseDown.superlayer)
+            let offset = CGPoint(x: newSuperLayerPosition.x - layerSelectedOnMouseDown.position.x,
+                                 y: newSuperLayerPosition.y - layerSelectedOnMouseDown.position.y)
             
             CATransaction.begin()
             CATransaction.setDisableActions(true)
             
                 // Update the position of the layer being dragged position of 
                 // any layers that are selected because of a previous drag selection box
-                layerSelectedByClick.position = newSuperLayerPosition
-                for layer in layersSelectedByDrag {
+                layerSelectedOnMouseDown.position = newSuperLayerPosition
+                for layer in selectedLayers.subtract(Set([layerSelectedOnMouseDown])) {
                     layer.position = CGPoint(x: layer.position.x + offset.x, y: layer.position.y + offset.y)
                 }
             
@@ -120,14 +184,14 @@ class CanvasView: NSView {
     override func mouseUp(theEvent: NSEvent) {
         
         // Clear all selection because the background was clicked during this event
-        if layerSelectedByClick == nil {
+        if let layerSelectedOnMouseDown = layerSelectedOnMouseDown {
             
-            for layer in layersSelectedByDrag {
+        } else {
+            for layer in selectedLayers {
                 if let shape = layer as? CAShapeLayer {
-                    removeHighlightOnShapeLater(shape)
+                    removeLayerFromSelectedCache(shape)
                 }
             }
-            layersSelectedByDrag.removeAll(keepCapacity: true)
         }
     }
 }
