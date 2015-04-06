@@ -28,6 +28,8 @@ class CanvasView: NSView {
 
     var selectedLayers : Set<CALayer> = Set()
     var layerSelectedOnMouseDown : CALayer?
+    var didDrag : Bool = false
+    var didAddNewLayerOnMouseDown = false
     
     func addLayerToSelectedCache( layer : CALayer) {
         self.selectedLayers.insert(layer)
@@ -43,6 +45,14 @@ class CanvasView: NSView {
         }
     }
     
+    func removeAllLayersFromSelectedCache() {
+        for layer in selectedLayers {
+            if let shape = layer as? CAShapeLayer {
+                removeLayerFromSelectedCache(shape)
+            }
+        }
+    }
+    
     override func drawRect(dirtyRect: NSRect) {
         super.drawRect(dirtyRect)
         // Drawing code here.
@@ -50,22 +60,15 @@ class CanvasView: NSView {
     
     override func mouseDown(theEvent: NSEvent) {
         
-//        // Remove all but not if a modifer key is held
-//        if( (theEvent.modifierFlags & NSEventModifierFlags.ShiftKeyMask).rawValue == 0 ){
-//            for layer in layersSelectedByDrag.union(layersSelectedByClick).subtract(Set([layerSelectedOnMouseDown])) {
-//                if let shape = layer as? CAShapeLayer {
-//                    removeLayerFromSelectionCache(shape)
-//                }
-//            }
-//        }
-//        
-        
+        didDrag = false
+        didAddNewLayerOnMouseDown = false
         let viewPoint = self.convertPoint(theEvent.locationInWindow, fromView: nil)
         let rootLayerPoint = self.convertPointToLayer(viewPoint)
+        layerSelectedOnMouseDown = nil
         if let rootLayer = self.layer {
             let hitLayer = rootLayer.hitTest(rootLayerPoint)
             if hitLayer != rootLayer {
-                
+            
                 layerSelectedOnMouseDown = hitLayer
                 let hitPointInHitLayerFrame = rootLayer.convertPoint(rootLayerPoint, toLayer: hitLayer)
                 let ax = hitPointInHitLayerFrame.x / NSWidth(hitLayer.bounds)
@@ -84,79 +87,36 @@ class CanvasView: NSView {
                 
                 let shiftIsPressed = !((theEvent.modifierFlags & NSEventModifierFlags.ShiftKeyMask).rawValue == 0)
                 let cacheContainsHitLayer = selectedLayers.contains(hitLayer)
+
                 
-                
-                if shiftIsPressed {
-                    // Toggle layer in and out of selected set
-                    if cacheContainsHitLayer {
-                        removeLayerFromSelectedCache(hitLayer)
-                        layerSelectedOnMouseDown = nil
-                    } else {
-                        addLayerToSelectedCache(hitLayer)
-                    }
-                } else {
-                    // If hit layer is not in the selected group reset the selection and select the single hit layer.
-                    // Otherwise do nothing because we will drag the whole group when the mouse is next dragged.
-                    if cacheContainsHitLayer {
-                        //removeLayerFromSelectedCache(hitLayer)
-                        
-                    } else {
-                        
+                if !cacheContainsHitLayer {
+                    
+                    if !shiftIsPressed {
+                        // De-select all layers and select the clicked layer
+                        // which is outside the current selection group.
                         for layer in selectedLayers {
                             if let shape = layer as? CAShapeLayer {
                                 removeLayerFromSelectedCache(shape)
                             }
                         }
                         addLayerToSelectedCache(hitLayer)
+                        didAddNewLayerOnMouseDown = true
+                    } else {
+                        addLayerToSelectedCache(hitLayer)
+                        didAddNewLayerOnMouseDown = true
                     }
                 }
-                
-            } else {
-                layerSelectedOnMouseDown = nil
             }
-            
-
-            
-
-            
-
-            
-//            if !selectedLayers.contains(hitLayer) && !shiftIsPressed {
-//                
-//                for layer in selectedLayers {
-//                    if let shape = layer as? CAShapeLayer {
-//                        removeLayerFromSelectedCache(shape)
-//                    }
-//                }
-//            }
-            
-            
-            
-            
-            
-//            // De-select all other layer that are not contained in the two caches
-//            let allLayers = Set(rootLayer.sublayers as! [CALayer])
-//            var cachedLayers = Set(layersSelectedByDrag.union(layersSelectedByClick))
-//            if layerSelectedOnMouseDown != nil {
-//                cachedLayers.insert(layerSelectedOnMouseDown!)
-//            }
-//            
-//            let layersNeedingDeselection = allLayers.subtract(cachedLayers)
-//            for layer in layersNeedingDeselection {
-//                if let shape = layer as? CAShapeLayer {
-//                    removeLayerFromSelectionCache(shape)
-//                }
-//            }
-            
-            
-            println()
-            
         }
         
-
+        if layerSelectedOnMouseDown ==  nil {
+            removeAllLayersFromSelectedCache()
+        }
     }
     
     override func mouseDragged(theEvent: NSEvent) {
+        
+        didDrag = true
         
         if let layerSelectedOnMouseDown = layerSelectedOnMouseDown, rootLayer = self.layer {
             
@@ -186,12 +146,19 @@ class CanvasView: NSView {
         // Clear all selection because the background was clicked during this event
         if let layerSelectedOnMouseDown = layerSelectedOnMouseDown {
             
-        } else {
-            for layer in selectedLayers {
-                if let shape = layer as? CAShapeLayer {
-                    removeLayerFromSelectedCache(shape)
+            let shiftIsPressed = !((theEvent.modifierFlags & NSEventModifierFlags.ShiftKeyMask).rawValue == 0)
+            let cacheContainsHitLayer = selectedLayers.contains(layerSelectedOnMouseDown)
+            
+            if shiftIsPressed && !didDrag && !didAddNewLayerOnMouseDown {
+                
+                // Toggle layer in and out of selected set
+                if cacheContainsHitLayer {
+                    removeLayerFromSelectedCache(layerSelectedOnMouseDown)
+                } else {
+                    addLayerToSelectedCache(layerSelectedOnMouseDown)
                 }
             }
+            
         }
     }
 }
