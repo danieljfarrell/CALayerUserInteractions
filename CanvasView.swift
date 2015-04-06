@@ -8,41 +8,26 @@
 
 import Cocoa
 
-func highlightShapeLayer(shape : CAShapeLayer) {
-    shape.lineWidth = 4.0
-}
+class CanvasView : NSView {
 
-func removeHighlightOnShapeLayer(shape : CAShapeLayer) {
-    shape.lineWidth = 0.0
-}
-
-func updateLayerPropertyWithoutAnimations( layer: CALayer, process : (layer : CALayer) -> () ) {
-    CATransaction.begin()
-    CATransaction.setDisableActions(true)
-    process(layer: layer)
-    CATransaction.commit()
-}
-
-
-class CanvasView: NSView {
-
+    /* State for selected items */
     var selectedLayers : Set<CALayer> = Set()
     var layerSelectedOnMouseDown : CALayer?
     var didDrag : Bool = false
     var didAddNewLayerOnMouseDown = false
     
+    
+    /** Stores the layer in cache and update the layer properties so that it draws a border */
     func addLayerToSelectedCache( layer : CALayer) {
         self.selectedLayers.insert(layer)
-        if let shape = layer as? CAShapeLayer {
-            highlightShapeLayer(shape)
-        }
+        layer.borderWidth = 4.0
+        layer.borderColor = NSColor.alternateSelectedControlColor().CGColor
     }
     
     func removeLayerFromSelectedCache(layer : CALayer) {
-        if let shape = layer as? CAShapeLayer {
-            removeHighlightOnShapeLayer(shape)
-            self.selectedLayers.remove(shape)
-        }
+        layer.borderWidth = 0.0
+        layer.borderColor = nil
+        self.selectedLayers.remove(layer)
     }
     
     func removeAllLayersFromSelectedCache() {
@@ -58,17 +43,23 @@ class CanvasView: NSView {
         // Drawing code here.
     }
     
+    
     override func mouseDown(theEvent: NSEvent) {
         
+        // Reset state
         didDrag = false
         didAddNewLayerOnMouseDown = false
+        layerSelectedOnMouseDown = nil
+        
+        // Convert to layer coordinate system
         let viewPoint = self.convertPoint(theEvent.locationInWindow, fromView: nil)
         let rootLayerPoint = self.convertPointToLayer(viewPoint)
-        layerSelectedOnMouseDown = nil
         if let rootLayer = self.layer {
+            
             let hitLayer = rootLayer.hitTest(rootLayerPoint)
             if hitLayer != rootLayer {
             
+                // Store hit layer
                 layerSelectedOnMouseDown = hitLayer
                 let hitPointInHitLayerFrame = rootLayer.convertPoint(rootLayerPoint, toLayer: hitLayer)
                 let ax = hitPointInHitLayerFrame.x / NSWidth(hitLayer.bounds)
@@ -85,10 +76,9 @@ class CanvasView: NSView {
                 
                 CATransaction.commit()
                 
+                // Perform actions that need to occur at mouseDown time
                 let shiftIsPressed = !((theEvent.modifierFlags & NSEventModifierFlags.ShiftKeyMask).rawValue == 0)
                 let cacheContainsHitLayer = selectedLayers.contains(hitLayer)
-
-                
                 if !cacheContainsHitLayer {
                     
                     if !shiftIsPressed {
@@ -109,6 +99,7 @@ class CanvasView: NSView {
             }
         }
         
+        // If nothing hit the reset all state
         if layerSelectedOnMouseDown ==  nil {
             removeAllLayersFromSelectedCache()
         }
@@ -116,10 +107,11 @@ class CanvasView: NSView {
     
     override func mouseDragged(theEvent: NSEvent) {
         
+        // Update state
         didDrag = true
         
+        // If we have something to drag, drag it!
         if let layerSelectedOnMouseDown = layerSelectedOnMouseDown, rootLayer = self.layer {
-            
             
             let viewPoint = self.convertPoint(theEvent.locationInWindow, fromView: nil)
             let rootLayerPoint = self.convertPointToLayer(viewPoint)
@@ -138,6 +130,7 @@ class CanvasView: NSView {
                 }
             
             CATransaction.commit()
+        
         }
     }
     
